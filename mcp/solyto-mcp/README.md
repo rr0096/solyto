@@ -1,20 +1,25 @@
 # solyto-mcp
 
-MCP server that gives any AI assistant full read/write access to your solyto personal data.
+MCP server with full read/write access to all solyto modules.
 
-Covers: **Todos · Calendar · Contacts · Notes · Music · Books · Check-ins · Finance · Time tracking · Links · Recipes · Quotes · Games · News · Clipboard**
-
----
-
-## Requirements
-
-- Node.js 22+
-- A running solyto instance (local or remote)
-- Your solyto API token
+**Dos modos:**
+- **`stdio`** — para Claude Desktop, Claude Code y clientes locales (sin red)
+- **`--http`** — para Claude.ai web y cualquier cliente remoto
 
 ---
 
-## Install & build
+## Variables de entorno
+
+| Variable | Descripción | Default |
+|---|---|---|
+| `SOLYTO_API_URL` | URL base de tu instancia solyto | `http://localhost:8080` |
+| `SOLYTO_TOKEN` | Bearer token de solyto | *(requerido)* |
+| `MCP_AUTH_KEY` | Clave secreta que deben enviar los clientes (recomendado en modo HTTP) | *(vacío = sin auth)* |
+| `PORT` | Puerto HTTP | `3000` |
+
+---
+
+## Instalación y compilación
 
 ```bash
 cd mcp/solyto-mcp
@@ -24,74 +29,100 @@ npm run build
 
 ---
 
-## Configuration
+## Modo HTTP — para Claude.ai web
 
-Set these two environment variables before running:
+### 1. Despliega el servidor
 
-| Variable | Description | Default |
-|---|---|---|
-| `SOLYTO_API_URL` | Base URL of your solyto API | `http://localhost:8080` |
-| `SOLYTO_TOKEN` | Bearer token from solyto settings | _(required)_ |
+**Opción A — Railway (más fácil)**
 
----
+1. Crea cuenta en railway.app
+2. "New project → Deploy from GitHub repo" → selecciona `rr0096/solyto`
+3. Set root directory: `mcp/solyto-mcp`
+4. Variables de entorno:
+   ```
+   SOLYTO_API_URL=https://tu-solyto.com
+   SOLYTO_TOKEN=tu-token-de-solyto
+   MCP_AUTH_KEY=una-clave-secreta-larga
+   PORT=3000
+   ```
+5. Railway te dará una URL pública como `https://solyto-mcp-production.up.railway.app`
 
-## Connect to Claude Desktop
+**Opción B — Docker en tu VPS**
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)  
-or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+```bash
+# En tu servidor
+docker build -t solyto-mcp .
+docker run -d \
+  -p 3000:3000 \
+  -e SOLYTO_API_URL=https://tu-solyto.com \
+  -e SOLYTO_TOKEN=tu-token \
+  -e MCP_AUTH_KEY=una-clave-secreta \
+  solyto-mcp
+```
+Pon nginx delante para HTTPS (requerido por Claude.ai).
 
-```json
-{
-  "mcpServers": {
-    "solyto": {
-      "command": "node",
-      "args": ["/absolute/path/to/solyto/mcp/solyto-mcp/dist/index.js"],
-      "env": {
-        "SOLYTO_API_URL": "https://your-solyto-instance.com",
-        "SOLYTO_TOKEN": "your-token-here"
-      }
-    }
-  }
-}
+**Opción C — Local con túnel (para probar)**
+
+```bash
+# Terminal 1
+SOLYTO_API_URL=http://localhost:8080 \
+SOLYTO_TOKEN=tu-token \
+MCP_AUTH_KEY=mi-clave \
+node dist/index.js --http
+
+# Terminal 2 — expone el puerto con ngrok
+npx ngrok http 3000
+# → obtienes https://xxxx.ngrok-free.app
 ```
 
-Then restart Claude Desktop. You'll see solyto tools available in the tool picker.
+### 2. Conecta en Claude.ai
+
+1. Ve a [claude.ai](https://claude.ai) → **Settings** → **Integrations**
+2. Haz clic en **"Add integration"** → **"Add custom integration"**
+3. Rellena:
+   - **Name:** `solyto`
+   - **Integration URL:** `https://tu-url-publica/mcp`
+4. Si activaste `MCP_AUTH_KEY`, Claude.ai pedirá autenticación — introduce la clave como token Bearer
+5. Guarda → verás las 42 herramientas disponibles en cualquier conversación
 
 ---
 
-## Connect to Claude Code (CLI)
+## Modo stdio — para Claude Desktop / Claude Code
 
-Add to your project's `.claude/settings.json` or `~/.claude/settings.json`:
+### Claude Desktop
+
+Añade en `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
+o `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
 ```json
 {
   "mcpServers": {
     "solyto": {
       "command": "node",
-      "args": ["/absolute/path/to/solyto/mcp/solyto-mcp/dist/index.js"],
+      "args": ["/ruta/absoluta/mcp/solyto-mcp/dist/index.js"],
       "env": {
         "SOLYTO_API_URL": "http://localhost:8080",
-        "SOLYTO_TOKEN": "your-token-here"
+        "SOLYTO_TOKEN": "tu-token"
       }
     }
   }
 }
 ```
 
-Or add it via the CLI:
+### Claude Code (CLI)
 
 ```bash
 claude mcp add solyto \
   -e SOLYTO_API_URL=http://localhost:8080 \
-  -e SOLYTO_TOKEN=your-token \
-  -- node /absolute/path/to/solyto/mcp/solyto-mcp/dist/index.js
+  -e SOLYTO_TOKEN=tu-token \
+  -- node /ruta/absoluta/mcp/solyto-mcp/dist/index.js
 ```
 
 ---
 
-## Available tools
+## Herramientas disponibles (42)
 
-| Module | Tools |
+| Módulo | Herramientas |
 |---|---|
 | Todos | `list_todos` `create_todo` `update_todo` `delete_todo` |
 | Calendar | `list_events` `create_event` `update_event` `delete_event` |
@@ -111,8 +142,10 @@ claude mcp add solyto \
 
 ---
 
-## Development (no build step)
+## Desarrollo (sin compilar)
 
 ```bash
 SOLYTO_API_URL=http://localhost:8080 SOLYTO_TOKEN=xxx npm run dev
+# o en modo HTTP:
+PORT=3000 MCP_AUTH_KEY=test SOLYTO_TOKEN=xxx npm run dev -- --http
 ```
