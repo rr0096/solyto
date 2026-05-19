@@ -1,0 +1,48 @@
+name: Deploy solyto-mcp to VPS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mcp/solyto-mcp/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+
+            # Clone on first deploy, pull on subsequent ones
+            if [ ! -d "$HOME/solyto" ]; then
+              git clone https://github.com/rr0096/solyto.git "$HOME/solyto"
+            else
+              git -C "$HOME/solyto" pull origin main
+            fi
+
+            cd "$HOME/solyto/mcp/solyto-mcp"
+
+            # Create .env only if it doesn't exist yet
+            if [ ! -f .env ]; then
+              cat > .env <<EOF
+            SOLYTO_API_URL=${{ secrets.SOLYTO_API_URL }}
+            SOLYTO_TOKEN=${{ secrets.SOLYTO_TOKEN }}
+            MCP_AUTH_KEY=${{ secrets.MCP_AUTH_KEY }}
+            PORT=3000
+            EOF
+            fi
+
+            # Rebuild and restart
+            docker compose down --remove-orphans || true
+            docker compose build --no-cache
+            docker compose up -d
+
+            # Verify it's healthy
+            sleep 5
+            docker compose ps
